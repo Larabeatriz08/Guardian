@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 from backend import db, rules
 
-app = FastAPI(title="Guardiao")
+app = FastAPI(title="Guardian")
 db.init()
 
 
