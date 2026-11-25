@@ -1,0 +1,2 @@
+# um dominio por linha
+site-bloqueado-teste.com

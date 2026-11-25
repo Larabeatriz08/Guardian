@@ -1,0 +1,20 @@
+# Ambiente virtual
+.venv/
+__pycache__/
+*.pyc
+
+# DADOS PRIVADOS: nunca versionar
+*.db
+*.sqlite3
+*.log
+logs/
+.env
+
+# Editor
+.vscode/
+.idea/
+
+# Build
+dist/
+build/
+*.spec
