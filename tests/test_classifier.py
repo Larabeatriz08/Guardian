@@ -93,3 +93,15 @@ def test_texto_e_cortado_e_so_o_dominio_vai(com_ia, monkeypatch):
     dominio, trecho = vistos[0]
     assert dominio == "novo.com"
     assert len(trecho) == classifier.MAX_CHARS
+
+def test_cache_de_videos_diferentes_do_youtube_nao_se_mistura(com_ia, monkeypatch):
+    chamadas = []
+
+    def falso(*a):
+        chamadas.append(1)
+        return '{"categoria": "seguro", "confianca": 1}'
+
+    monkeypatch.setattr(classifier, "_chamar", falso)
+    classifier.classify("https://www.youtube.com/watch?v=AAA", "t", "texto")
+    classifier.classify("https://www.youtube.com/watch?v=BBB", "t", "texto")
+    assert len(chamadas) == 2

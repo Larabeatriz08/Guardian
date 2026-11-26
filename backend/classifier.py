@@ -2,7 +2,7 @@ import json
 import os
 import re
 import urllib.request
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 OLLAMA_URL = os.getenv("GUARDIAN_OLLAMA_URL", "http://127.0.0.1:11434")
 MODELO = os.getenv("GUARDIAN_AI_MODEL", "qwen2.5:3b")
@@ -83,6 +83,14 @@ def _chamar(dominio, titulo, trecho):
         return json.loads(r.read().decode("utf-8"))["message"]["content"]
 
 
+def _chave(p, host):
+    """Chave do cache. No YouTube cada video (parametro v) e uma pagina diferente."""
+    chave = f"{host}{p.path}"
+    if host == "youtube.com" or host.endswith(".youtube.com"):
+        chave += "?v=" + parse_qs(p.query).get("v", [""])[0]
+    return chave
+
+
 def classify(url, title, text):
     """Retorna (categoria, confianca). (None, 0.0) = seguro ou sem resposta."""
     if not habilitado() or not text.strip():
@@ -92,7 +100,7 @@ def classify(url, title, text):
     if not host or _seguro(host):
         return None, 0.0
 
-    chave = f"{host}{p.path}"   # sem query: nao guardamos buscas
+    chave = _chave(p, host)   # sem query (exceto o id do video): nao guardamos buscas
     if chave in _cache:
         return _cache[chave]
 

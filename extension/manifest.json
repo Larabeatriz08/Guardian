@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Guardian",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Controle parental transparente: registra e bloqueia sites inapropriados neste computador.",
   "permissions": ["tabs", "alarms", "scripting"],
   "host_permissions": [
@@ -11,5 +11,12 @@
   ],
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*", "https://m.youtube.com/*"],
+      "js": ["youtube.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }

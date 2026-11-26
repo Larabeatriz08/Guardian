@@ -6,6 +6,15 @@ function ignoravel(url) {
   return !url || !/^https?:/i.test(url);
 }
 
+function ehYoutube(url) {
+  try {
+    const h = new URL(url).hostname;
+    return h === "youtube.com" || h.endsWith(".youtube.com");
+  } catch (err) {
+    return false;
+  }
+}
+
 async function lerTexto(tabId) {
   try {
     const r = await chrome.scripting.executeScript({
@@ -22,30 +31,19 @@ async function lerTexto(tabId) {
   }
 }
 
-async function reportar(tab, comTexto) {
-  if (ignoravel(tab.url)) return;
-  if (comTexto && tab.status !== "complete") return; // espera carregar
-
-  const chave = `${tab.id}|${tab.url}|${comTexto ? "texto" : "url"}`;
+// Unico lugar que fala com o servidor
+async function enviar(tabId, chave, corpo) {
   if (enviados.has(chave)) return;
   enviados.add(chave);
-
-  const texto = comTexto ? await lerTexto(tab.id) : "";
-
   try {
     const resp = await fetch(API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: tab.url,
-        title: tab.title || "",
-        text: texto,
-        active: !!tab.active,
-      }),
+      body: JSON.stringify(corpo),
     });
     const data = await resp.json();
     if (data.action === "block") {
-      chrome.tabs.update(tab.id, { url: chrome.runtime.getURL("blocked.html") });
+      chrome.tabs.update(tabId, { url: chrome.runtime.getURL("blocked.html") });
     }
   } catch (err) {
     enviados.delete(chave); // tenta de novo na proxima varredura
@@ -53,10 +51,40 @@ async function reportar(tab, comTexto) {
   }
 }
 
+async function reportar(tab, comTexto) {
+  if (ignoravel(tab.url)) return;
+  if (comTexto && tab.status !== "complete") return; // espera carregar
+  if (comTexto && ehYoutube(tab.url)) return; // o youtube.js cuida do YouTube
+
+  const chave = `${tab.id}|${tab.url}|${comTexto ? "texto" : "url"}`;
+  if (enviados.has(chave)) return;
+
+  const texto = comTexto ? await lerTexto(tab.id) : "";
+  await enviar(tab.id, chave, {
+    url: tab.url,
+    title: tab.title || "",
+    text: texto,
+    active: !!tab.active,
+  });
+}
+
 function reportarTudo(tab) {
   reportar(tab, false);
   reportar(tab, true);
 }
+
+// Mensagens do youtube.js (um video novo foi aberto)
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (!msg || msg.type !== "youtube" || !sender.tab) return;
+  const tab = sender.tab;
+  const chave = `${tab.id}|${msg.url}|yt`;
+  enviar(tab.id, chave, {
+    url: msg.url,
+    title: `${msg.title} - ${msg.channel}`.trim(),
+    text: `Canal: ${msg.channel}. ${msg.description}`.slice(0, 1500),
+    active: !!tab.active,
+  });
+});
 
 // 1) Navegacao: URL mudou (fase rapida) ou pagina terminou de carregar (com texto)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
