@@ -1,7 +1,7 @@
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI
 from pydantic import BaseModel
 
-from backend import db, rules
+from backend import db, notify, rules
 
 app = FastAPI(title="Guardian")
 db.init()
@@ -19,8 +19,10 @@ def health():
 
 
 @app.post("/event")
-def event(e: TabEvent):
+def event(e: TabEvent, background: BackgroundTasks):
     categoria, conf = rules.check(e.url, e.title)
     action = rules.decide(categoria)
     db.log(e.url, e.title, categoria or "none", action, conf)
+    if action != "allow":
+        background.add_task(notify.enviar, categoria, action, e.url)
     return {"action": action, "category": categoria}
