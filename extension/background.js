@@ -1,15 +1,36 @@
 const API = "http://127.0.0.1:8765/event";
-const lastSent = new Map(); // tabId -> ultima URL enviada (evita eventos repetidos)
+const enviados = new Set(); // "idDaAba|url|fase" (evita eventos repetidos)
 
 function ignoravel(url) {
   // so interessam paginas web; ignora chrome://, edge://, about:blank etc.
   return !url || !/^https?:/i.test(url);
 }
 
-async function reportar(tab) {
+async function lerTexto(tabId) {
+  try {
+    const r = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () =>
+        (document.body ? document.body.innerText : "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 1500),
+    });
+    return (r && r[0] && r[0].result) || "";
+  } catch (err) {
+    return ""; // aba descartada, pagina protegida etc.
+  }
+}
+
+async function reportar(tab, comTexto) {
   if (ignoravel(tab.url)) return;
-  if (lastSent.get(tab.id) === tab.url) return;
-  lastSent.set(tab.id, tab.url);
+  if (comTexto && tab.status !== "complete") return; // espera carregar
+
+  const chave = `${tab.id}|${tab.url}|${comTexto ? "texto" : "url"}`;
+  if (enviados.has(chave)) return;
+  enviados.add(chave);
+
+  const texto = comTexto ? await lerTexto(tab.id) : "";
 
   try {
     const resp = await fetch(API, {
@@ -18,6 +39,7 @@ async function reportar(tab) {
       body: JSON.stringify({
         url: tab.url,
         title: tab.title || "",
+        text: texto,
         active: !!tab.active,
       }),
     });
@@ -26,31 +48,39 @@ async function reportar(tab) {
       chrome.tabs.update(tab.id, { url: chrome.runtime.getURL("blocked.html") });
     }
   } catch (err) {
-    // backend desligado: por enquanto deixa passar (veremos como reforcar no Passo 8)
+    enviados.delete(chave); // tenta de novo na proxima varredura
     console.warn("Guardian: backend indisponivel", err);
   }
 }
 
-// 1) Navegacao: URL mudou ou pagina terminou de carregar
+function reportarTudo(tab) {
+  reportar(tab, false);
+  reportar(tab, true);
+}
+
+// 1) Navegacao: URL mudou (fase rapida) ou pagina terminou de carregar (com texto)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.url || changeInfo.status === "complete") {
-    reportar(tab);
-  }
+  if (changeInfo.url) reportar(tab, false);
+  if (changeInfo.status === "complete") reportarTudo(tab);
 });
 
 // 2) Troca de aba ativa
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   const tab = await chrome.tabs.get(tabId);
-  reportar(tab);
+  reportarTudo(tab);
 });
 
 // 3) Limpeza
-chrome.tabs.onRemoved.addListener((tabId) => lastSent.delete(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => {
+  for (const k of [...enviados]) {
+    if (k.startsWith(tabId + "|")) enviados.delete(k);
+  }
+});
 
 // 4) Varredura de TODAS as abas (pega abas em segundo plano)
 async function varrer() {
   const abas = await chrome.tabs.query({});
-  abas.forEach(reportar);
+  abas.forEach(reportarTudo);
 }
 
 chrome.alarms.create("varredura", { periodInMinutes: 1 });
