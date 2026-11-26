@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 import pytest
@@ -11,7 +12,10 @@ from backend.main import app
 def client(tmp_path, monkeypatch):
     banco_teste = tmp_path / "teste.db"
     monkeypatch.setattr(db, "DB", banco_teste)
-    monkeypatch.setattr(rules, "BLOCKLIST", {"bloqueado.com"})
+    monkeypatch.setattr(rules, "BLOCKLIST", {"bloqueado.com": "adulto"})
+    arq = tmp_path / "k.json"
+    arq.write_text(json.dumps({"drogas": ["maconha"]}), encoding="utf-8")
+    monkeypatch.setattr(rules, "KEYWORDS", rules.load_keywords(arq))
     db.init()
     return TestClient(app), banco_teste
 
@@ -26,8 +30,7 @@ def test_health(client):
 def test_site_bloqueado(client):
     c, _ = client
     r = c.post("/event", json={"url": "https://www.bloqueado.com", "title": "x"})
-    assert r.status_code == 200
-    assert r.json() == {"action": "block", "category": "blocklist"}
+    assert r.json() == {"action": "block", "category": "adulto"}
 
 
 def test_site_permitido(client):
@@ -36,12 +39,18 @@ def test_site_permitido(client):
     assert r.json() == {"action": "allow", "category": None}
 
 
+def test_palavra_chave_gera_alerta_sem_bloquear(client):
+    c, _ = client
+    r = c.post("/event", json={"url": "https://x.com", "title": "maconha"})
+    assert r.json() == {"action": "alert", "category": "drogas"}
+
+
 def test_evento_e_gravado_no_banco(client):
     c, banco = client
     c.post("/event", json={"url": "https://bloqueado.com", "title": "teste"})
     with sqlite3.connect(banco) as conn:
         linhas = conn.execute("SELECT url, category, action FROM events").fetchall()
-    assert linhas == [("https://bloqueado.com", "blocklist", "block")]
+    assert linhas == [("https://bloqueado.com", "adulto", "block")]
 
 
 def test_payload_invalido_retorna_422(client):

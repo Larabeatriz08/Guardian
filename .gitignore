@@ -18,3 +18,8 @@ logs/
 dist/
 build/
 *.spec
+
+
+
+backend/lists/*.local.txt
+testar.py

@@ -20,7 +20,7 @@ def health():
 
 @app.post("/event")
 def event(e: TabEvent):
-    category, conf = rules.check_domain(e.url)
-    action = "block" if category else "allow"
-    db.log(e.url, e.title, category or "none", action, conf)
-    return {"action": action, "category": category}
+    categoria, conf = rules.check(e.url, e.title)
+    action = rules.decide(categoria)
+    db.log(e.url, e.title, categoria or "none", action, conf)
+    return {"action": action, "category": categoria}
